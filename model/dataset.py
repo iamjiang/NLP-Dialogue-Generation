@@ -40,10 +40,19 @@ class DialogDataset(Dataset):
         3. for each line of the data, split the line using '\t' and convert the second and third column to ids using vocab.string2ids
         4. return all the tokenized data as a list of tuples (style, post, resp) (you can set the style to be any value you like)
         '''
-        ###############################
-        # YOUR CODE HERE for Task 1   #
-        ###############################
-        raise NotImplementedError
+        logger.info('reading data from {}'.format(paths))
+        dataset = []
+        for path in paths:
+            with open(path, 'r', encoding='utf8') as f:
+                lines = [i.strip() for i in f.readlines() if len(i.strip()) != 0]
+                lines = [i.split('\t') for i in lines]
+                for line in lines:
+                    # style, post, resp
+                    dataset.append([int(line[0]),
+                                    vocab.string2ids(' '.join(line[1].replace(' ', '')))[:max_lengths],
+                                    vocab.string2ids(' '.join(line[2].replace(' ', '')))[:max_lengths]])
+        logger.info('{} data record loaded'.format(len(dataset)))
+        return dataset
 
     def __len__(self):
         return len(self.data)

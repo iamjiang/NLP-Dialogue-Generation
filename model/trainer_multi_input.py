@@ -177,10 +177,41 @@ class Trainer:
         4. calculate the lm loss and the s2s loss. (you can refer to the implement in the train function)
         5. accumlate the lm loss and s2s loss for all batches and return the average lm loss and s2s loss
         '''
-        ###############################
-        # YOUR CODE HERE for Task 4   #
-        ###############################
-        raise NotImplementedError
+        loss = torch.tensor(0, dtype=torch.long, device=self.device)
+        lm_loss = torch.tensor(0, dtype=torch.long, device=self.device)
+        with torch.no_grad():
+            self.model.eval()
+            # self.logger.info("evaluating on rank {}, with datasize {}".format(self.rank, len(self.valid_dataloader)))
+            for i, data in enumerate(self.valid_dataloader):
+                post, resp = data['post'].to(self.device), data['resp'].to(self.device)
+                enc_contexts = []
+
+                # lm loss
+                post_rep = self.model.encode(post.clone())
+                enc_contexts.append(post_rep)
+
+                context_outputs = self.model.generate(post_rep[0])
+                ignore_mask = torch.stack([post == idx for idx in self.ignore_idxs], dim=-1).any(dim=-1).bool()
+                post.masked_fill_(ignore_mask, self.model.vocab.pad_id)
+                prevs, nexts = context_outputs[:, :-1, :].contiguous(), post[:, 1:].contiguous()
+                batch_lm_loss = self.lm_criterion(prevs.view(-1, prevs.shape[-1]), nexts.view(-1))
+
+                # s2s loss
+                prevs, nexts = resp[:, :-1].contiguous(), resp[:, 1:].contiguous()
+                outputs = self.model.decode(prevs, enc_contexts)
+                outputs = F.log_softmax(outputs, dim=-1)
+                batch_loss = self.criterion(outputs.view(-1, outputs.shape[-1]), nexts.view(-1))
+
+                # predictions = self.model.beam_search(enc_contexts)
+                # target_lens = resp.ne(self.model.padding_idx).sum(dim=-1)
+                # targets = [t[1:l - 1].tolist() for t, l in zip(resp, target_lens)]
+
+                lm_loss = (i * lm_loss + batch_lm_loss) / (i + 1)
+                loss = (i * loss + batch_loss) / (i + 1)
+            # self.logger.info("results on rank {}, {}, {}".format(self.rank, loss.item(), lm_loss.item()))
+        # log_str = 'lm_loss {}, loss {}'.format(lm_loss, loss)
+        # self.logger.info(log_str)
+        return lm_loss, loss
 
     def _pred_sample(self, n_sample):
         with torch.no_grad():

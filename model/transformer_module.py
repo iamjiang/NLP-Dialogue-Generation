@@ -91,10 +91,31 @@ class MultiheadAttention(nn.Module):
         5. merge the heads. (use self._merge_heads)
         6. return
         '''
-        ###############################
-        # YOUR CODE HERE for Task 3   #
-        ###############################
-        raise NotImplementedError
+        qkv_same = (query.data_ptr() == key.data_ptr() == value.data_ptr())
+        kv_same = (key.data_ptr() == value.data_ptr())
+
+        if qkv_same:
+            query, key, value = self.qkv_proj(query).split(self.n_features, dim=-1)
+            apply_future_mask = True  # self-attention
+        elif kv_same:
+            q_w, q_b = self.qkv_proj.weight[:self.n_features, :], self.qkv_proj.bias[:self.n_features]
+            query = F.linear(query, q_w, q_b)
+            kv_w, kv_b = self.qkv_proj.weight[self.n_features:, :], self.qkv_proj.bias[self.n_features:]
+            key, value = F.linear(key, kv_w, kv_b).split(self.n_features, dim=-1)
+            apply_future_mask = False
+        else:
+            assert False
+
+        query = self._split_heads(query)
+        key = self._split_heads(key, is_key=True)
+        value = self._split_heads(value)
+
+        x = self._attn(query, key, value, apply_future_mask, padding_mask)
+        x = self._merge_heads(x)
+
+        x = self.out_proj(x)
+
+        return x
 
 
 class FeedForward(nn.Module):

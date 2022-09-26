@@ -46,7 +46,17 @@ class LabelSmoothingLoss(nn.Module):
         2. mask the confidence of the ignore_index to 0.
         3. calculate the loss by using the KLDivLoss
         '''
-        ###############################
-        # YOUR CODE HERE for Task 2   #
-        ###############################
-        raise NotImplementedError
+        if self.confidence < 1:
+            tdata = targets.data
+  
+            tmp = self.one_hot.repeat(targets.shape[0], 1)
+            tmp.scatter_(1, tdata.unsqueeze(1), self.confidence)
+
+            if self.ignore_index >= 0:
+                mask = torch.nonzero(tdata.eq(self.ignore_index)).squeeze(-1)
+                if mask.numel() > 0:
+                    tmp.index_fill_(0, mask, 0)
+
+            targets = tmp
+        
+        return self.criterion(log_inputs, targets)
